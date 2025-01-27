@@ -14,12 +14,14 @@ var (
 	ErrInvalidModification = errors.New("Invalid modification parameters")
 )
 
+// OrderBook represents a collection of buy (bids) and sell (asks) orders.
 type OrderBook struct {
 	mu   sync.RWMutex
 	asks []Order // Sell Orders ordered by increasing price
 	bids []Order // Bids Orders ordered by decreasing price
 }
 
+// Trade represents a completed transaction between a buy and a sell order.
 type Trade struct {
 	BuyOrderID  string  `json:"buy_order_id"`
 	SellOrderID string  `json:"sell_order_id"`
@@ -27,18 +29,21 @@ type Trade struct {
 	Amount      float64 `json:"Amount"`
 }
 
+// OrderBookLevel represents an aggregated price level in the orderbook.
 type OrderBookLevel struct {
 	Price       float64
 	TotalAmount float64
 	OrderCount  int
 }
 
+// OrderBookSnapshot represents a snapshot of the orderbook at a specific time.
 type OrderBookSnapshot struct {
 	Asks []OrderBookLevel
 	Bids []OrderBookLevel
 	Time time.Time
 }
 
+// NewOrderBook creates and returns a new, empty orderbook.
 func NewOrderBook() *OrderBook {
 	return &OrderBook{
 		asks: make([]Order, 0),
@@ -123,6 +128,8 @@ func (ob *OrderBook) ModifyOrder(orderID string, newPrice, newAmount float64) er
 	return ErrOrderNotFound
 }
 
+// PlaceOrder adds a new order to the orderbook.
+// Orders are sorted by price: descending for bids and ascending for asks.
 func (ob *OrderBook) PlaceOrder(order Order) error {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
@@ -136,6 +143,9 @@ func (ob *OrderBook) PlaceOrder(order Order) error {
 	return nil
 }
 
+// ProcessOrder matches an incoming order against existing orders in the book.
+// Creates trades for fully or partially matched orders. Any unmatched portion
+// of the incoming order is added to the orderbook.
 func (ob *OrderBook) ProcessOrder(order Order) []*Trade {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
@@ -199,6 +209,8 @@ func (ob *OrderBook) ProcessOrder(order Order) []*Trade {
 	return trades
 }
 
+// GetBestBid returns the highest bid order.
+// Returns ErrNoOrders if no bids are available.
 func (ob *OrderBook) GetBestBid() (Order, error) {
 	ob.mu.RLock()
 	defer ob.mu.RUnlock()
@@ -278,6 +290,7 @@ func (ob *OrderBook) GetOrderBookSnapshot() OrderBookSnapshot {
 	return snapshot
 }
 
+// Helper function to check if the price of two orders match.
 func isPriceMatching(order *Order, matchOrder *Order) bool {
 	switch order.Side {
 	case Buy:
@@ -288,6 +301,7 @@ func isPriceMatching(order *Order, matchOrder *Order) bool {
 	return false
 }
 
+// Helper function to create a trade from two orders and the executed amount.
 func createTrade(order *Order, matchOrder *Order, executedAmount float64) *Trade {
 	trade := &Trade{
 		Price:  matchOrder.Price,
@@ -304,10 +318,12 @@ func createTrade(order *Order, matchOrder *Order, executedAmount float64) *Trade
 	return trade
 }
 
+// Helper function to remove an order.
 func removeOrder(orders []Order, index int) []Order {
 	return append(orders[:index], orders[index+1:]...)
 }
 
+// Helper function to insert an order into a sorted slice.
 func insertSorted(orders []Order, order Order, ascending bool) []Order {
 	var i int
 	for i = 0; i < len(orders); i++ {
