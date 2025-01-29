@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"orderbook/internal/orderbook"
 	"strconv"
+
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -29,6 +31,8 @@ func (h *Handler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
 		return
 	}
+
+  order.ID = uuid.New().String() // Without this uuid become arbitrary from the user and can rewrites ther orders
 
 	if err := h.book.PlaceOrder(order); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -69,7 +73,7 @@ func (h *Handler) ModifyOrder(w http.ResponseWriter, r *http.Request) {
 	var price, amount float64
 	orderID := r.URL.Query().Get("id")
 	priceString := r.URL.Query().Get("price")
-	amountString := r.URL.Query().Get("price")
+	amountString := r.URL.Query().Get("amount")
 
 	if orderID == "" {
 		http.Error(w, "Order ID is Required", http.StatusBadRequest)
