@@ -128,7 +128,78 @@ func (h *Handler) ProcessOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Encode and return the trades
 	if err := json.NewEncoder(w).Encode(trades); err != nil {
-		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		http.Error(w, "Error Encoding Response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// Handler for GetBestBid function
+func (h *Handler) GetBestBid(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bestBid, err := h.book.GetBestBid()
+
+	if err == orderbook.ErrNoOrders {
+		http.Error(w, "No Orders Present", http.StatusNotFound)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(bestBid); err != nil {
+		http.Error(w, "Error Encoding Response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// Handler for GetBestAsk function
+func (h *Handler) GetBestAsk(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bestBid, err := h.book.GetBestAsk()
+
+	if err == orderbook.ErrNoOrders {
+		http.Error(w, "No Orders Present", http.StatusNotFound)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(bestBid); err != nil {
+		http.Error(w, "Error Encoding Response", http.StatusInternalServerError)
+		return
+	}
+}
+
+// Handler for GetOrderbookSNapshot function
+func (h *Handler) GetOrderbookSnapshot(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	snapshot := h.book.GetOrderBookSnapshot()
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(snapshot); err != nil {
+		http.Error(w, "Error Encoding Response", http.StatusInternalServerError)
 		return
 	}
 }

@@ -111,7 +111,7 @@ func TestCancelOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Place test orders
 			for _, order := range tt.ordersToAdd {
@@ -234,7 +234,7 @@ func TestModifyOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Place test orders
 			for _, order := range tt.ordersToAdd {
@@ -301,7 +301,7 @@ func TestPlaceOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 			for _, order := range tt.orders {
 				if err := ob.PlaceOrder(order); err != nil {
 					t.Fatalf("Failed to place order: %v", err)
@@ -345,12 +345,15 @@ func TestProcessOrder_CompleteMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 			if err := ob.PlaceOrder(tt.existingOrder); err != nil {
 				t.Fatalf("Failed to place existing order: %v", err)
 			}
 
-			trades := ob.ProcessOrder(tt.newOrder)
+			trades, err := ob.ProcessOrder(tt.newOrder)
+			if err != nil {
+				t.Fatalf("Failed to process order: %v", err)
+			}
 			assertTradeCount(t, trades, 1)
 			assertTradeDetails(t, trades[0], tt.expectedTrade)
 			assertEmptyOrderBook(t, ob)
@@ -397,12 +400,15 @@ func TestProcessOrder_PartialMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 			if err := ob.PlaceOrder(tt.existingOrder); err != nil {
 				t.Fatalf("Failed to place existing order: %v", err)
 			}
 
-			trades := ob.ProcessOrder(tt.newOrder)
+			trades, err := ob.ProcessOrder(tt.newOrder)
+			if err != nil {
+				t.Fatalf("Failed to process order: %v", err)
+			}
 			assertTradeCount(t, trades, 1)
 			assertTradeDetails(t, trades[0], tt.expectedTrade)
 			assertRemainingOrder(t, ob, tt.remainingOrder)
@@ -465,7 +471,7 @@ func TestProcessOrder_PriceTimePriority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Place existing orders
 			for _, order := range tt.existingOrders {
@@ -475,7 +481,10 @@ func TestProcessOrder_PriceTimePriority(t *testing.T) {
 			}
 
 			// Process new order
-			trades := ob.ProcessOrder(tt.newOrder)
+			trades, err := ob.ProcessOrder(tt.newOrder)
+			if err != nil {
+				t.Fatalf("Failed to process order: %v", err)
+			}
 
 			// Verify number of trades
 			if len(trades) != len(tt.expectedTrades) {
@@ -631,7 +640,7 @@ func TestProcessOrder_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Place existing orders
 			for _, order := range tt.existingOrders {
@@ -641,7 +650,10 @@ func TestProcessOrder_EdgeCases(t *testing.T) {
 			}
 
 			// Process new order
-			trades := ob.ProcessOrder(tt.newOrder)
+			trades, err := ob.ProcessOrder(tt.newOrder)
+			if err != nil {
+				t.Fatalf("Failed to process order: %v", err)
+			}
 
 			// Verify number of trades
 			if len(trades) != len(tt.expectedTrades) {
@@ -705,7 +717,7 @@ func TestGetBestBid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Add the test orders
 			for _, order := range tt.ordersToAdd {
@@ -781,7 +793,7 @@ func TestGetBestAsk(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Add the test orders
 			for _, order := range tt.ordersToAdd {
@@ -865,7 +877,7 @@ func TestGetOrderBookSnapshot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ob := NewOrderBook()
+			ob := NewOrderBook("TEST")
 
 			// Add the test orders
 			for _, order := range tt.ordersToAdd {

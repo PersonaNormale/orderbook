@@ -6,16 +6,21 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var (
 	ErrNoOrders            = errors.New("No orders available")
 	ErrOrderNotFound       = errors.New("Order not found")
 	ErrInvalidModification = errors.New("Invalid modification parameters")
+	ErrInvalidOrder        = errors.New("Invalid order's values")
 )
 
 // OrderBook represents a collection of buy (bids) and sell (asks) orders.
 type OrderBook struct {
+	Tag  string `json:"Tag"`
+	ID   string `json:"ID"`
 	mu   sync.RWMutex
 	asks []Order // Sell Orders ordered by increasing price
 	bids []Order // Bids Orders ordered by decreasing price
@@ -26,7 +31,7 @@ type Trade struct {
 	BuyOrderID  string  `json:"buy_order_id"`
 	SellOrderID string  `json:"sell_order_id"`
 	Price       float64 `json:"price"`
-	Amount      float64 `json:"Amount"`
+	Amount      float64 `json:"amount"`
 }
 
 // OrderBookLevel represents an aggregated price level in the orderbook.
@@ -44,8 +49,10 @@ type OrderBookSnapshot struct {
 }
 
 // NewOrderBook creates and returns a new, empty orderbook.
-func NewOrderBook() *OrderBook {
+func NewOrderBook(tag string) *OrderBook {
 	return &OrderBook{
+		Tag:  tag,
+		ID:   uuid.New().String(),
 		asks: make([]Order, 0),
 		bids: make([]Order, 0),
 	}
@@ -80,7 +87,7 @@ func (ob *OrderBook) CancelOrder(orderID string) error {
 // If the price changes, the order is repositioned to maintain correct sorting.
 // Returns ErrOrderNotFound if the order doesn't exist or ErrInvalidModification
 // if the new values are invalid.
-func (ob *OrderBook) ModifyOrder(orderID string, newPrice, newAmount float64) error {
+func (ob *OrderBook) ModifyOrder(orderID string, newPrice float64, newAmount float64) error {
 	// Input validation
 	if newPrice <= 0 || newAmount <= 0 {
 		return ErrInvalidModification
@@ -134,6 +141,10 @@ func (ob *OrderBook) PlaceOrder(order Order) error {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
+	if order.Price <= 0 || order.Amount <= 0 {
+		return ErrInvalidOrder
+	}
+
 	switch order.Side {
 	case Buy:
 		ob.bids = insertSorted(ob.bids, order, false) // decreasing price
@@ -144,52 +155,54 @@ func (ob *OrderBook) PlaceOrder(order Order) error {
 }
 
 // ProcessOrder matches an incoming order against existing orders in the book.
-// Creates trades for fully or partially matched orders. Any unmatched portion
+// It creates trades for fully or partially matched orders. Any unmatched portion
 // of the incoming order is added to the orderbook.
-func (ob *OrderBook) ProcessOrder(order Order) []*Trade {
+func (ob *OrderBook) ProcessOrder(order Order) ([]*Trade, error) {
 	ob.mu.Lock()
 	defer ob.mu.Unlock()
 
+	var err error
 	var trades []*Trade
-
-	// Determina quale lato del book usare per il matching
-	var orders *[]Order
-	switch order.Side {
-	case Buy:
-		orders = &ob.asks
-	case Sell:
-		orders = &ob.bids
-	}
-
 	remainingAmount := order.Amount
 
-	// Finché ci sono ordini da matchare e quantità rimanente
-	for len(*orders) > 0 && remainingAmount > 0 {
-		bestOrder := &(*orders)[0]
+	// Determine which side of the book to match against
+	var matchingSide *[]Order
+	switch order.Side {
+	case Buy:
+		matchingSide = &ob.asks // Match against asks (sell orders)
+	case Sell:
+		matchingSide = &ob.bids // Match against bids (buy orders)
+	default:
+		return nil, ErrInvalidOrder // Invalid order side, return empty trades
+	}
 
-		// Verifica se il prezzo è matchabile
+	// Iterate through the matching side to find matches
+	for len(*matchingSide) > 0 && remainingAmount > 0 {
+		bestOrder := &(*matchingSide)[0] // Get the best order (first in the list)
+
+		// Check if the prices match
 		if !isPriceMatching(&order, bestOrder) {
-			break
+			break // No more matches possible
 		}
 
-		// Calcola la quantità da eseguire
+		// Calculate the amount to execute
 		executedAmount := math.Min(remainingAmount, bestOrder.Amount)
 
-		// Crea il trade
+		// Create a trade
 		trade := createTrade(&order, bestOrder, executedAmount)
 		trades = append(trades, trade)
 
-		// Aggiorna le quantità
+		// Update remaining amounts
 		remainingAmount -= executedAmount
 		bestOrder.Amount -= executedAmount
 
-		// Se l'ordine è completamente eseguito, rimuovilo
+		// Remove the best order if it's fully executed
 		if bestOrder.Amount == 0 {
-			*orders = (*orders)[1:]
+			*matchingSide = (*matchingSide)[1:] // Remove the first order
 		}
 	}
 
-	// Se c'è una quantità rimanente, aggiungi un nuovo ordine al book
+	// If there's any remaining amount, add it to the order book
 	if remainingAmount > 0 {
 		newOrder := Order{
 			ID:     order.ID,
@@ -198,15 +211,12 @@ func (ob *OrderBook) ProcessOrder(order Order) []*Trade {
 			Side:   order.Side,
 		}
 
-		switch order.Side {
-		case Buy:
-			ob.bids = insertSorted(ob.bids, newOrder, false) // ordine decrescente per i bid
-		case Sell:
-			ob.asks = insertSorted(ob.asks, newOrder, true) // ordine crescente per gli ask
-		}
+		ob.mu.Unlock()
+		err = ob.PlaceOrder(newOrder)
+		ob.mu.Lock()
 	}
 
-	return trades
+	return trades, err
 }
 
 // GetBestBid returns the highest bid order.
@@ -318,19 +328,16 @@ func createTrade(order *Order, matchOrder *Order, executedAmount float64) *Trade
 	return trade
 }
 
-// Helper function to remove an order.
-func removeOrder(orders []Order, index int) []Order {
-	return append(orders[:index], orders[index+1:]...)
-}
-
 // Helper function to insert an order into a sorted slice.
 func insertSorted(orders []Order, order Order, ascending bool) []Order {
-	var i int
-	for i = 0; i < len(orders); i++ {
-		if (ascending && orders[i].Price > order.Price) || (!ascending && orders[i].Price < order.Price) {
-			break
+	i := sort.Search(len(orders), func(i int) bool {
+		if ascending {
+			return orders[i].Price > order.Price
 		}
-	}
-	orders = append(orders[:i], append([]Order{order}, orders[i:]...)...)
+		return orders[i].Price < order.Price
+	})
+	orders = append(orders, Order{}) // Add a dummy element to extend the slice
+	copy(orders[i+1:], orders[i:])   // Shift elements to the right
+	orders[i] = order                // Insert the new order
 	return orders
 }
